@@ -132,26 +132,41 @@ def calculate_drag_free_launch_angles_in_degrees(
     Returns:
         Optional[Tuple[float, float]]: Tuple of (low angle, high angle) in degrees,
                                      or None if target is unreachable
+                                     Special cases:
+                                        if distance is 0 and height > 0:
+                                        returns (90, 90)
+                                        if distance is 0 and height < 0:
+                                        returns (-90, -90)
+                                        if both distance and height are 0:
+                                        return None (as no angle could be determined)
     """
     # Check if target is reachable with given velocity
     velocity_squared = velocity**2
     discriminant = velocity_squared**2 - g * (
         g * distance**2 + 2 * height * velocity_squared
     )
+    # print(f"{discriminant=}")
 
     if discriminant < 0:
         return None
+    if distance == 0:
+        if height>0:
+            return (90, 90)
+        elif height<0:
+            return (-90, -90)
+        else:
+            # There is no angle between point (0, 0) and (0, 0)
+            return None
+    else:
+        # Calculate the two possible angles using quadratic formula
+        term1 = velocity_squared
+        term2 = math.sqrt(discriminant)
+        term3 = g * distance
+        assert term3 != 0
+        angle1 = math.atan2(term1 - term2, term3)
+        angle2 = math.atan2(term1 + term2, term3)
 
-    # Calculate the two possible angles using quadratic formula
-    term1 = velocity_squared
-    term2 = math.sqrt(discriminant)
-    term3 = g * distance
-
-    if term3 !=0:
-        angle1 = math.atan((term1 - term2) / term3)
-        angle2 = math.atan((term1 + term2) / term3)
-
-    # Return angles in ascending order (low, high)
+        # Return angles in ascending order (low, high)
         return (math.degrees(min(angle1, angle2)), math.degrees(max(angle1, angle2)))
 
 

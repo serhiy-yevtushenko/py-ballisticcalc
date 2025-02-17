@@ -166,3 +166,14 @@ def test_compute_projectile_time_to_position():
 
     assert pos_unlofted[0]==pytest.approx(pos_lofted[0], abs=1e-8)
     assert pos_unlofted[1]==pytest.approx(pos_lofted[1], abs=1e-8)
+
+
+def test_launch_angles_vertical_shot():
+    angles = calculate_drag_free_launch_angles_in_degrees(0, 100, 50, EARTH_GRAVITY_CONSTANT)
+    assert (90, 90)==angles
+
+    angles = calculate_drag_free_launch_angles_in_degrees(0, -100, 50, EARTH_GRAVITY_CONSTANT)
+    assert (-90, -90)==angles
+
+    angles = calculate_drag_free_launch_angles_in_degrees(0, 0, 50, EARTH_GRAVITY_CONSTANT)
+    assert angles is None
