@@ -14,14 +14,14 @@ from py_ballisticcalc_exts.cy_bindings cimport (
     Wind_t,
     Atmosphere_t,
     ShotData_t,
+    ShotT_spin_drift,
+    ShotT_update_stability_coefficient,
     config_bind,
     update_density_factor_and_mach_for_altitude,
     cy_table_to_mach,
     cy_calculate_curve,
     cy_calculate_by_curve_and_mach_list,
-    cy_spin_drift,
     cy_drag_by_mach,
-    cy_update_stability_coefficient,
     free_trajectory,
     WindT_from_python,
     WindT_to_V3dT,
@@ -324,7 +324,8 @@ cdef class CythonizedBaseIntegrationEngine:
             )
         )
         self._shot_s.muzzle_velocity = shot_info.ammo.get_velocity_for_temp(shot_info.atmo.powder_temp)._fps
-        cy_update_stability_coefficient(&self._shot_s)
+        if ShotT_update_stability_coefficient(&self._shot_s) < 0:
+            raise ZeroDivisionError("Zero division detected in ShotT_update_stability_coefficient")
 
         self._wind_sock = WindSockT_create(shot_info.winds)
         if self._wind_sock is NULL:
@@ -390,7 +391,7 @@ cdef object create_trajectory_row(double time, const V3dT *range_vector_ptr, con
 
     cdef:
         double look_angle = shot_data_ptr.look_angle
-        double spin_drift = cy_spin_drift(shot_data_ptr, time)
+        double spin_drift = ShotT_spin_drift(shot_data_ptr, time)
         double velocity = mag(velocity_vector_ptr)
         double windage = range_vector_ptr.z + spin_drift
         double drop_adjustment = getCorrection(range_vector_ptr.x, range_vector_ptr.y)

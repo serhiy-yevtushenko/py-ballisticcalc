@@ -4,15 +4,16 @@ import logging
 __all__ = ('logger',
            'enable_file_logging',
            'disable_file_logging',
-)
+           )
 
 formatter = logging.Formatter("%(levelname)s:%(name)s:%(message)s")
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
-console_handler.setLevel(logging.INFO)  # Default level for console
+console_handler.setLevel(logging.DEBUG)  # Lowest level for console
 
 logger = logging.getLogger('py_balcalc')
 logger.addHandler(console_handler)
+logger.setLevel(logging.INFO)
 
 # File handler (optional, added dynamically)
 file_handler = None

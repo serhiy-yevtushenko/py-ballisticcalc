@@ -60,6 +60,9 @@ typedef struct {
     Atmosphere_t atmo;
 } ShotData_t;
 
+double ShotT_spin_drift(const ShotData_t *shot_data_ptr, double time);
+int ShotT_update_stability_coefficient(ShotData_t *shot_data_ptr);
+
 typedef struct {
     double velocity;
     double direction_from;
