@@ -257,33 +257,6 @@ cdef double cy_drag_by_mach(const ShotData_t * shot_data_ptr, double mach):
     cdef double cd = cy_calculate_by_curve_and_mach_list(&shot_data_ptr.mach_list, &shot_data_ptr.curve, mach)
     return cd * 2.08551e-04 / shot_data_ptr.bc
 
-cdef double cy_spin_drift(const ShotData_t * shot_data_ptr, double time):
-    """Litz spin-drift approximation
-    :param time: Time of flight
-    :return: windage due to spin drift, in feet
-    """
-    cdef double sign
-    if (shot_data_ptr.twist != 0) and (shot_data_ptr.stability_coefficient != 0):
-        sign = 1 if shot_data_ptr.twist > 0 else -1
-        return sign * (1.25 * (shot_data_ptr.stability_coefficient + 1.2) * pow(time, 1.83)) / 12
-    return 0
-
-cdef void cy_update_stability_coefficient(ShotData_t * shot_data_ptr):
-    """Miller stability coefficient"""
-    cdef:
-        double twist_rate, length, sd, fv, ft, pt, ftp
-    if shot_data_ptr.twist and shot_data_ptr.length and shot_data_ptr.diameter and shot_data_ptr.atmo._p0:
-        twist_rate = fabs(shot_data_ptr.twist) / shot_data_ptr.diameter
-        length = shot_data_ptr.length / shot_data_ptr.diameter
-        sd = 30.0 * shot_data_ptr.weight / (pow(twist_rate, 2) * pow(shot_data_ptr.diameter, 3) * length * (1 + pow(length, 2)))
-        fv = pow(shot_data_ptr.muzzle_velocity / 2800, 1.0 / 3.0)
-        ft = (shot_data_ptr.atmo._t0 * 9.0 / 5.0) + 32.0  # Convert from Celsius to Fahrenheit
-        pt = shot_data_ptr.atmo._p0 / 33.8639  # Convert hPa to inHg
-        ftp = ((ft + 460.0) / (59.0 + 460.0)) * (29.92 / pt)
-        shot_data_ptr.stability_coefficient = sd * fv * ftp
-    else:
-        shot_data_ptr.stability_coefficient = 0.0
-
 # Function to free memory for Curve_t
 cdef void free_curve(Curve_t *curve_ptr):
     if curve_ptr.points is not NULL:

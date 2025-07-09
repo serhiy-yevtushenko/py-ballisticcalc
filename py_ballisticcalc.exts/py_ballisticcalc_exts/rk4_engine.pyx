@@ -16,7 +16,6 @@ from py_ballisticcalc_exts.cy_bindings cimport (
     Config_t,
     ShotData_t,
     update_density_factor_and_mach_for_altitude,
-    cy_spin_drift,
     cy_drag_by_mach,
     cy_get_calc_step,
 )

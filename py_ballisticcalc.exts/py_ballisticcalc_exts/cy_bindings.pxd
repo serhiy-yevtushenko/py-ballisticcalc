@@ -54,6 +54,9 @@ cdef extern from "include/types.h" nogil:
         double stability_coefficient
         Atmosphere_t atmo
 
+    double ShotT_spin_drift(const ShotData_t *shot_data_ptr, double time)
+    int ShotT_update_stability_coefficient(ShotData_t *shot_data_ptr)
+
     ctypedef struct Wind_t:
         double velocity
         double direction_from
@@ -71,9 +74,7 @@ cdef double cy_get_calc_step(const Config_t * config_ptr, double step = ?)
 cdef MachList_t cy_table_to_mach(list[object] data)
 cdef Curve_t cy_calculate_curve(list[object] data_points)
 cdef double cy_calculate_by_curve_and_mach_list(const MachList_t *mach_list_ptr, const Curve_t *curve_ptr, double mach)
-cdef double cy_spin_drift(const ShotData_t * shot_data_ptr, double time)
 cdef double cy_drag_by_mach(const ShotData_t * shot_data_ptr, double mach)
-cdef void cy_update_stability_coefficient(ShotData_t * shot_data_ptr)
 
 cdef void free_curve(Curve_t *curve_ptr)
 cdef void free_mach_list(MachList_t *mach_list_ptr)
