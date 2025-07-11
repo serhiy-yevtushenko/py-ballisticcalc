@@ -182,6 +182,7 @@ def check_shot_result_equivalent(scipy_calc, shot_factory, point_x, point_y):
         find_zero_angle_result_degrees = find_zero_angle_result >> Angular.Degree
         print(f"{find_zero_angle_result_degrees=}")
     except (OutOfRangeError, ZeroFindingError) as e:
+        print(f"find_zero_angle throws error {e} for point ({point_x=}, {point_y=})")
         find_zero_angle_error_flag = True
         find_zero_angle_error = e
     try:
@@ -189,7 +190,7 @@ def check_shot_result_equivalent(scipy_calc, shot_factory, point_x, point_y):
         zero_angle_result_degrees = zero_angle_result >> Angular.Degree
         print(f"{zero_angle_result_degrees=}")
     except (OutOfRangeError, ZeroDivisionError) as e:
-        print(f"zero_angle raised unexpected {e}")
+        print(f"zero_angle throws error {e} for point ({point_x=}, {point_y=})")
         zero_angle_error_flag = True
         zero_angle_error = e
     if not find_zero_angle_error_flag and not zero_angle_error_flag:
@@ -197,7 +198,7 @@ def check_shot_result_equivalent(scipy_calc, shot_factory, point_x, point_y):
             zero_angle_result_degrees, abs=ANGLE_EPSILON_IN_DEGREES
         )
     else:
-        assert find_zero_angle_error == zero_angle_error_flag, (
+        assert find_zero_angle_error_flag == zero_angle_error_flag, (
             f"Error should occur both in find_zero_error:{find_zero_angle_error_flag=} and zero_angle:{zero_angle_error_flag=}"
         )
         assert type(find_zero_angle_error) == type(zero_angle_error), (
@@ -403,7 +404,7 @@ def test_handling_zero_point(shot_factory, scipy_calc):
 def test_reachable_almost_max_height(shot_factory, scipy_calc):
     with PreferredUnitsContextManager():
         loadMetricUnits()
-        print(f"{PreferredUnits=}")
+        # print(f"{PreferredUnits=}")
         check_reachable_almost_max_height(scipy_calc, shot_factory)
 
 
