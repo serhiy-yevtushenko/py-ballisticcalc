@@ -3,7 +3,24 @@ import math
 import pytest
 
 import py_ballisticcalc
-from py_ballisticcalc import Angular, HitResult, Distance, loadMetricUnits, RangeError
+from py_ballisticcalc import (
+    Angular,
+    HitResult,
+    Distance,
+    loadMetricUnits,
+    RangeError,
+    Weight,
+    DragModel,
+    TableG1,
+    Ammo,
+    Velocity,
+    Temperature,
+    Pressure,
+    Atmo,
+    Weapon,
+    Wind,
+    Shot,
+)
 from tests.fixtures_and_helpers import print_out_trajectory_compact
 
 ANGLE_EPSILON_IN_DEGREES = 0.0009
@@ -336,6 +353,28 @@ def test_7_62_point_mismatch(scipy_calc):
     check_shot_angle_equals(scipy_calc, create_7_62_mm_shot_neg_sight_height, point_x, point_y)
 
 
+def create_7_62_mm_shot_rostislav():
+    diameter = Distance.Millimeter(7.62)
+    length: Distance = Distance.Millimeter(32.5628)
+    weight = Weight.Grain(180)
+    dm = DragModel(bc=0.2860,
+                   drag_table=TableG1,
+                   weight=weight,
+                   diameter=diameter,
+                   length=length)
+
+
+    ammo = Ammo(dm, mv=Velocity.MPS(800), powder_temp=Temperature.Celsius(20), use_powder_sensitivity=False)
+    ammo.calc_powder_sens(other_velocity=Velocity.MPS(805), other_temperature=Temperature.Celsius(15))
+    current_atmo = Atmo(altitude=Distance.Meter(400), pressure=Pressure.hPa(967.24), temperature=Temperature.Celsius(20),
+                        humidity=60)
+    gun = Weapon(sight_height=Distance.Millimeter(-100), twist=Distance.Millimeter(300))
+    current_winds = [Wind(0, 0)]
+    new_shot = Shot(weapon=gun, ammo=ammo, atmo=current_atmo,
+                    winds=current_winds)  # Copy the zero properties; NB: Not a deepcopy!
+    return new_shot
+
+
 def create_7_62_mm_shot_neg_sight_height():
     diameter = py_ballisticcalc.Distance.Millimeter(7.62)
     length: py_ballisticcalc.Distance = py_ballisticcalc.Distance.Millimeter(32.5628)
@@ -344,7 +383,8 @@ def create_7_62_mm_shot_neg_sight_height():
         bc=0.2860, drag_table=py_ballisticcalc.TableG1, weight=weight, diameter=diameter, length=length
     )
 
-    ammo = py_ballisticcalc.Ammo(dm, mv=py_ballisticcalc.Velocity.MPS(800), powder_temp=py_ballisticcalc.Temperature.Celsius(20))
+    ammo = py_ballisticcalc.Ammo(dm, mv=py_ballisticcalc.Velocity.MPS(800),
+                                 powder_temp=py_ballisticcalc.Temperature.Celsius(20))
     gun = py_ballisticcalc.Weapon(sight_height=py_ballisticcalc.Distance.Millimeter(-100), twist=py_ballisticcalc.Distance.Millimeter(300))
     new_shot = py_ballisticcalc.Shot(
         weapon=gun, ammo=ammo
@@ -412,6 +452,7 @@ def find_min_dev_point(hit_result, point_x, point_y):
     return min_dev_point
 
 TESTED_SHOTS = [create_23_mm_shot, create_0_308_caliber_shot, create_7_62_mm_shot_neg_sight_height,
+                create_7_62_mm_shot_rostislav,
                 create_nato_7_62_mm, create_nato_5_56_mm_shot_pos_sight_height]
 #SMALL_TESTED_SHOTS = [create_23_mm_shot]
 TESTED_ANGLES = list(range(0, 91, 1))
