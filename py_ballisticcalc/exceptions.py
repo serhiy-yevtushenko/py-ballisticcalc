@@ -122,10 +122,10 @@ class OutOfRangeError(SolverRuntimeError):
         msg = f"Requested distance {requested_distance}"
 
         if max_range is not None:
-            msg += f" exceeds maximum possible range {max_range._feet} feet"
+            msg += f" exceeds maximum possible range {max_range}"
 
         if look_angle is not None and look_angle.raw_value:
-            msg += f" with look-angle {look_angle._rad} rad"
+            msg += f" with look-angle {look_angle}"
 
         if note:
             msg += f". {note}"

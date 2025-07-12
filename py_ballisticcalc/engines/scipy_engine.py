@@ -13,7 +13,7 @@ TODO:
 import math
 import warnings
 from dataclasses import dataclass, asdict
-from typing import Literal, Any, Callable
+from typing import Literal, Any, Callable, Final
 
 import numpy as np
 from typing_extensions import Union, Tuple, List, Optional, override
@@ -24,7 +24,7 @@ from py_ballisticcalc.engines.base_engine import create_trajectory_row
 from py_ballisticcalc.exceptions import OutOfRangeError, RangeError, ZeroFindingError
 from py_ballisticcalc.logger import logger
 from py_ballisticcalc.trajectory_data import TrajectoryData, TrajFlag, HitResult
-from py_ballisticcalc.unit import Distance, Angular
+from py_ballisticcalc.unit import Distance, Angular, PreferredUnits
 from py_ballisticcalc.vector import Vector
 
 __all__ = ('SciPyIntegrationEngine',
@@ -123,7 +123,8 @@ DEFAULT_MAX_TIME: float = 90.0  # Max flight time to simulate before stopping in
 DEFAULT_RELATIVE_TOLERANCE: float = 1e-8  # Default relative tolerance (rtol) for integration
 DEFAULT_ABSOLUTE_TOLERANCE: float = 1e-6  # Default absolute tolerance (atol) for integration
 DEFAULT_INTEGRATION_METHOD: INTEGRATION_METHOD = 'RK45'  # Default integration method for solve_ivp
-
+MAX_RANGE_ACCEPTABLE_DEVIATION: Final[float] = 1e-6
+ACCEPTABLE_MIN_DISTANCE: Final[float] = 1e-6
 
 @dataclass
 class SciPyEngineConfig(BaseEngineConfig):
@@ -249,7 +250,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             return t.look_distance >> Distance.Foot
 
         res = minimize_scalar(lambda angle_rad: -range_for_angle(angle_rad),
-                              bounds=(float(max(self.look_angle_rad, math.radians(angle_bracket_deg[0]))),
+                              bounds=((max(self.look_angle_rad, math.radians(angle_bracket_deg[0]))),
                                       math.radians(angle_bracket_deg[1])),
                               method='bounded')  # type: ignore
 
@@ -306,8 +307,8 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
         max_range_ft = max_range >> Distance.Foot
 
         if target_look_dist_ft > max_range_ft:
-            raise OutOfRangeError(distance, max_range, Angular.Radian(look_angle))
-        if abs(target_look_dist_ft - max_range_ft) < self.ALLOWED_ZERO_ERROR_FEET:
+            raise OutOfRangeError(distance<<PreferredUnits.distance, max_range<<PreferredUnits.distance, Angular.Radian(self.look_angle_rad)<<PreferredUnits.angular)
+        if abs(target_look_dist_ft - max_range_ft) < MAX_RANGE_ACCEPTABLE_DEVIATION:
             return angle_at_max
 
         def error_at_distance(angle_rad: float) -> float:
@@ -318,10 +319,13 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             self.barrel_elevation_rad = angle_rad
             try:
                 # Integrate to find the projectile's state at the target's horizontal distance.
-                t = self._integrate(shot_info, target_x_ft, target_x_ft, TrajFlag.NONE)[0]
-                return (t.height >> Distance.Foot) - target_y_ft
-            except RangeError:
+                t = self._integrate(shot_info, target_x_ft, target_x_ft, TrajFlag.NONE, stop_at_zero=True)[0]
+                result_error = (t.height >> Distance.Foot) - target_y_ft
+                # print(f'{result_error=}  {distance>>Distance.Meter=} {math.degrees(angle_rad)=}')
+                return result_error
+            except RangeError as e:
                 # If the projectile doesn't reach the target, it's a very large negative error.
+                # print(f'got range error {e} {distance>>Distance.Meter=} {math.degrees(angle_rad)=}')
                 return -1e6
 
         if lofted:
@@ -331,13 +335,15 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             if start_height > 0:  # Lower bound can be less than look angle
                 sight_height_adjust = math.atan2(start_height, target_x_ft)
             angle_bracket = (self.look_angle_rad - sight_height_adjust, angle_at_max >> Angular.Radian)
+            # print(f'{distance>>Distance.Meter=} m {max_range>>Distance.Meter=} m, {sight_height_adjust=} {math.degrees(self.look_angle_rad)=} {angle_at_max>>Angular.Degree=} deg {math.degrees(angle_bracket[0])=} deg {math.degrees(angle_bracket[1])=} deg')
 
         try:
             sol = root_scalar(error_at_distance, bracket=angle_bracket, method='brentq')
         except ValueError as e:
             raise ZeroFindingError(target_y_ft, 0, Angular.Radian(self.barrel_elevation_rad),
-                                   reason=f"No {'lofted' if lofted else 'low'} zero trajectory in elevation range " +
-                                          f"({Angular.Radian(angle_bracket[0])}, {Angular.Radian(angle_bracket[1])} radians. {e}")
+                reason=f"No {'lofted' if lofted else 'low'} zero trajectory in elevation range "+
+                     f"({Angular.Radian(angle_bracket[0])>>Angular.Degree},"
+                     f" {Angular.Radian(angle_bracket[1])>>Angular.Degree}) degrees. {e}")
         if not sol.converged:
             raise ZeroFindingError(target_y_ft, 0, Angular.Radian(self.barrel_elevation_rad),
                                    reason=f"Root-finder failed to converge: {sol.flag} with {sol}")
@@ -390,11 +396,12 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
         while iterations_count < _cMaxIterations:
             # Check height of trajectory at the zero distance (using current self.barrel_elevation)
             try:
-                t = self._integrate(shot_info, zero_distance, zero_distance, TrajFlag.NONE)[0]
+                t = self._integrate(shot_info, zero_distance, zero_distance, TrajFlag.NONE, stop_at_zero=True)[0]
             except RangeError as e:
                 if e.last_distance is None:
                     raise e
                 t = e.incomplete_trajectory[-1]
+            logger.debug(f"{iterations_count=} {t=}")
 
             horizontal_ft = t.distance >> Distance.Foot  # Horizontal distance
 
@@ -408,6 +415,8 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             trajectory_angle = t.angle >> Angular.Radian  # Flight angle at current distance
             # signed_error = height - height_at_zero
             sensitivity = math.tan(self.barrel_elevation_rad) * math.tan(trajectory_angle)
+            logger.debug(f'Zero step {iterations_count}: {sensitivity=} {signed_error=} {look_dist_ft=}')
+
             if -1.5 < sensitivity < -0.5:
                 # Scenario too unstable for 1st order iteration
                 logger.debug("Unstable scenario detected in zero_angle(); calling find_zero_angle()")
@@ -446,7 +455,12 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             else:  # Current barrel_elevation hit zero!
                 break
             iterations_count += 1
+
+        logger.debug(f'After ending {iterations_count}: height_error={height_error_ft} ft\t range_error={range_error_ft} ft'
+                     f'\t{math.degrees(self.barrel_elevation_rad)} deg\t at {look_dist_ft}ft.')
+
         if height_error_ft > _cZeroFindingAccuracy or range_error_ft > self.ALLOWED_ZERO_ERROR_FEET:
+            logger.debug(f'delegating to find_zero_angle {shot_info.look_angle=} {distance=}')
             return self.find_zero_angle(shot_info, distance)
             # # ZeroFindingError contains an instance of last barrel elevation; so caller can check how close zero is
             # raise ZeroFindingError(zero_error, iterations_count, Angular.Radian(self.barrel_elevation))
@@ -547,7 +561,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
 
         def event_zero_crossing(t: float, s: Any) -> np.floating:  # Look for trajectory crossing sight line
             # Solve for y = x * tan(look_angle)
-            return s[1] - s[0] * math.tan(self.look_angle_rad)
+            return s[1] - s[0] * math.tan(self.look_angle_rad) if s[0]>0 and s[1]>0 else 1.
 
         if filter_flags & TrajFlag.ZERO:
             zero_crossing = scipy_event(terminal=False, direction=0)(event_zero_crossing)
