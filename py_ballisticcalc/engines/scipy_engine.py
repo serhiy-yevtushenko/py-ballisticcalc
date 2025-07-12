@@ -327,8 +327,8 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
         target_look_dist_ft = distance >> Distance.Foot
         target_x_ft = target_look_dist_ft * math.cos(look_angle)
         target_y_ft = target_look_dist_ft * math.sin(look_angle)
-        start_height = -self.sight_height * self.cant_cosine
 
+        start_height = -self.sight_height * self.cant_cosine
         # region Edge cases
         if abs(target_look_dist_ft) < self.ALLOWED_ZERO_ERROR_FEET:
             return shot_info.look_angle
@@ -344,6 +344,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
 
         max_range, angle_at_max = self.find_max_range(shot_info)
         max_range_ft = max_range >> Distance.Foot
+        max_range_x_ft = max_range_ft * math.cos(look_angle)
 
         if target_look_dist_ft > max_range_ft:
             raise OutOfRangeError(
@@ -362,20 +363,25 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             self.barrel_elevation_rad = angle_rad
             try:
                 # Integrate to find the projectile's state at the target's horizontal distance.
-                t = self._integrate(
+                integrate_result = self._integrate(
                     shot_info,
-                    target_x_ft,
-                    target_x_ft,
+                    max_range_x_ft,
+                    max_range_x_ft,
                     TrajFlag.NONE,
                     stop_at_zero=True,
-                )[0]
-                result_error = (t.height >> Distance.Foot) - target_y_ft
-                # print(f'{result_error=}  {distance>>Distance.Meter=} {math.degrees(angle_rad)=}')
+                )
+                t = integrate_result[0]
+                p_x_ft = t.distance >> Distance.Foot
+                p_y_ft = t.height >> Distance.Foot
+                p_distance_ft = (p_x_ft**2 + p_y_ft**2) ** 0.5
+
+                result_error = p_distance_ft - target_look_dist_ft
                 return result_error
-            except RangeError:
-                # except RangeError as e:
+            except RangeError as e:
+                #   except RangeError as e:
                 # If the projectile doesn't reach the target, it's a very large negative error.
                 # print(f'got range error {e} {distance>>Distance.Meter=} {math.degrees(angle_rad)=}')
+                logger.warning("Got RangeError in error at distance", e)
                 return -1e6
 
         if lofted:
@@ -393,6 +399,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
         try:
             sol = root_scalar(error_at_distance, bracket=angle_bracket, method="brentq")
         except ValueError as e:
+            print(f"Got Value Error {e}")
             raise ZeroFindingError(
                 target_y_ft,
                 0,
