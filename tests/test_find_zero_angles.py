@@ -3,7 +3,7 @@ import math
 import pytest
 
 import py_ballisticcalc
-from py_ballisticcalc import Angular, HitResult
+from py_ballisticcalc import Angular, HitResult, Distance, loadMetricUnits, RangeError
 from tests.fixtures_and_helpers import print_out_trajectory_compact
 
 ANGLE_EPSILON_IN_DEGREES = 0.0009
@@ -258,11 +258,27 @@ def check_find_angles_max_range(scipy_calc, shot_factory):
         zero_launch_angle_in_degrees, abs=ANGLE_EPSILON_IN_DEGREES
     )
     find_zero_angle_shot = shot_factory()
-    max_launch_angle = scipy_calc.find_zero_angle(find_zero_angle_shot, max_range)
-    find_zero_max_launch_angle_in_degrees = max_launch_angle >> py_ballisticcalc.Angular.Degree
-    find_zero_max_launch_angle_in_degrees == pytest.approx(
+    find_zero_max_launch_angle = scipy_calc.find_zero_angle(find_zero_angle_shot, max_range)
+    find_zero_max_launch_angle_in_degrees = find_zero_max_launch_angle >> py_ballisticcalc.Angular.Degree
+    assert find_zero_max_launch_angle_in_degrees == pytest.approx(
         max_range_launch_angle_in_degrees, abs=ANGLE_EPSILON_IN_DEGREES
     )
+    shot = shot_factory()
+    shot.relative_angle = Angular.Degree(max_range_launch_angle_in_degrees)
+    print(f'{max_range>>Distance.Meter=} m')
+    extra = False
+    try:
+        hit_results = scipy_calc.fire(shot, max_range, extra_data=extra)
+    except RangeError as e:
+        # assert False
+        print(f'Got range error {e} for shot {shot_factory.__name__} distance: {max_range>>Distance.Meter} m')
+        hit_results = HitResult(shot, e.incomplete_trajectory, extra=extra)
+    print_out_trajectory_compact(hit_results)
+    hit_distance_meters = (hit_results[-1].distance >> Distance.Meter)
+    hit_height_meters = (hit_results[-1].height >> Distance.Meter)
+
+    assert abs(hit_distance_meters-(max_range>>Distance.Meter))<0.01
+    assert abs(hit_height_meters)<0.01
 
 
 def check_handling_zero_point(scipy_calc, shot_factory):
@@ -305,7 +321,7 @@ def test_find_max_range_23_mm(scipy_calc):
 def test_7_62_point_mismatch(scipy_calc):
     point_x = 67.79956401327206
     point_y = 83.47708433996526
-    shot = create_7_62_mm_shot()
+    shot = create_7_62_mm_shot_neg_sight_height()
     look_angle_wo_sight_degrees = math.degrees(math.atan2(point_y, point_x))
     sight_height_meters = shot.weapon.sight_height >> py_ballisticcalc.Distance.Meter
     height_diff_target_trajectory_start = point_y + sight_height_meters
@@ -317,11 +333,10 @@ def test_7_62_point_mismatch(scipy_calc):
     )
     print(f"{look_angle_wo_sight_degrees=} {angle_from_start_degrees=}")
     print(f"{(point_x**2+height_diff_target_trajectory_start**2)**0.5=}")
+    check_shot_angle_equals(scipy_calc, create_7_62_mm_shot_neg_sight_height, point_x, point_y)
 
-    check_shot_angle_equals(scipy_calc, create_7_62_mm_shot, point_x, point_y)
 
-
-def create_7_62_mm_shot():
+def create_7_62_mm_shot_neg_sight_height():
     diameter = py_ballisticcalc.Distance.Millimeter(7.62)
     length: py_ballisticcalc.Distance = py_ballisticcalc.Distance.Millimeter(32.5628)
     weight = py_ballisticcalc.Weight.Grain(180)
@@ -333,8 +348,45 @@ def create_7_62_mm_shot():
     gun = py_ballisticcalc.Weapon(sight_height=py_ballisticcalc.Distance.Millimeter(-100), twist=py_ballisticcalc.Distance.Millimeter(300))
     new_shot = py_ballisticcalc.Shot(
         weapon=gun, ammo=ammo
-    )  # Copy the zero properties; NB: Not a deepcopy!
+    )
     return new_shot
+
+def create_nato_7_62_mm():
+    # 7.62x51mm NATO M118
+    diameter = py_ballisticcalc.Distance.Millimeter(7.62)
+    length: py_ballisticcalc.Distance = py_ballisticcalc.Distance.Millimeter(32.0)
+    weight = py_ballisticcalc.Weight.Grain(175)
+    dm = py_ballisticcalc.DragModel(
+        bc=0.243,
+        drag_table=py_ballisticcalc.TableG7,
+        weight=weight,
+        diameter=diameter,
+        length=length,
+    )
+    ammo = py_ballisticcalc.Ammo(dm, mv=py_ballisticcalc.Velocity.MPS(800))
+    gun = py_ballisticcalc.Weapon()
+    shot = py_ballisticcalc.Shot(
+        weapon=gun, ammo=ammo
+    )
+    return shot
+
+
+def create_nato_5_56_mm_shot_pos_sight_height():
+    # 5.56x45mm NATO SS109
+    diameter = py_ballisticcalc.Distance.Millimeter(5.56)
+    length: py_ballisticcalc.Distance = py_ballisticcalc.Distance.Millimeter(21.0)
+    weight = py_ballisticcalc.Weight.Grain(62)
+    dm = py_ballisticcalc.DragModel(
+        bc=0.1510, drag_table=py_ballisticcalc.TableG7, weight=weight, diameter=diameter, length=length
+    )
+    ammo = py_ballisticcalc.Ammo(dm, mv=py_ballisticcalc.Velocity.MPS(900))
+    gun = py_ballisticcalc.Weapon(sight_height=Distance.Centimeter(9))
+    shot = py_ballisticcalc.Shot(
+        weapon=gun,
+        ammo=ammo,
+    )
+    return shot
+
 
 def get_meter_coords(point: py_ballisticcalc.TrajectoryData)->tuple[float, float]:
     return (point.distance >> py_ballisticcalc.Distance.Meter, point.height >> py_ballisticcalc.Distance.Meter)
@@ -359,7 +411,8 @@ def find_min_dev_point(hit_result, point_x, point_y):
     min_dev_point = trajectory[min_index]
     return min_dev_point
 
-TESTED_SHOTS = [create_23_mm_shot, create_0_308_caliber_shot, create_7_62_mm_shot]
+TESTED_SHOTS = [create_23_mm_shot, create_0_308_caliber_shot, create_7_62_mm_shot_neg_sight_height,
+                create_nato_7_62_mm, create_nato_5_56_mm_shot_pos_sight_height]
 #SMALL_TESTED_SHOTS = [create_23_mm_shot]
 TESTED_ANGLES = list(range(0, 91, 1))
 
@@ -411,7 +464,9 @@ def test_find_max_range_different_angles(shot_factory, look_angle_degrees, scipy
 
 @pytest.mark.parametrize("shot_factory", TESTED_SHOTS)
 def test_set_weapon_zero_max_range(shot_factory, scipy_calc):
-    check_find_angles_max_range(scipy_calc, shot_factory)
+    with PreferredUnitsContextManager():
+        loadMetricUnits()
+        check_find_angles_max_range(scipy_calc, shot_factory)
 
 
 @pytest.mark.parametrize("shot_factory", TESTED_SHOTS)
@@ -434,9 +489,9 @@ def test_reachable_almost_max_height(shot_factory, scipy_calc):
 EXCEPTION_CASES = [
     ((7071.630552600922, 153.97926113995862), create_23_mm_shot),
     ((4691.07221312, 105.36063621068715), create_0_308_caliber_shot),
-    ((3749.876564130784, 0), create_7_62_mm_shot),
-    ((3574.6008249856727, 24.05582994099316), create_7_62_mm_shot),
-    ((3600.140741624915, 14.463475504373086), create_7_62_mm_shot),
+    ((3749.876564130784, 0), create_7_62_mm_shot_neg_sight_height),
+    ((3574.6008249856727, 24.05582994099316), create_7_62_mm_shot_neg_sight_height),
+    ((3600.140741624915, 14.463475504373086), create_7_62_mm_shot_neg_sight_height),
 ]
 @pytest.mark.parametrize("exception_data",EXCEPTION_CASES)
 def test_exception_case(exception_data, scipy_calc):
