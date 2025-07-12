@@ -692,7 +692,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             event_min_velocity,
         ]
 
-        def event_zero_crossing(
+        def event_second_zero_crossing(
             t: float, s: Any
         ) -> np.floating:  # Look for trajectory crossing sight line
             # Solve for y = x * tan(look_angle)
@@ -702,6 +702,12 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
                 else 1.0
             )
 
+        def event_zero_crossing(
+            t: float, s: Any
+        ) -> np.floating:  # Look for trajectory crossing sight line
+            # Solve for y = x * tan(look_angle)
+            return s[1] - s[0] * math.tan(self.look_angle_rad)
+
         if filter_flags & TrajFlag.ZERO:
             zero_crossing = scipy_event(terminal=False, direction=0)(
                 event_zero_crossing
@@ -709,7 +715,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             traj_events.append(zero_crossing)
         elif filter_flags == TrajFlag.NONE and stop_at_zero:
             zero_crossing = scipy_event(terminal=True, direction=-1)(
-                event_zero_crossing
+                event_second_zero_crossing
             )
             traj_events.append(zero_crossing)
 
