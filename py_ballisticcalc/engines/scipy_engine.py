@@ -271,8 +271,9 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             try:
                 t = self._integrate(
                     shot_info, 9e9, 9e9, TrajFlag.NONE, stop_at_zero=True
-                )[0]
+                )[-1]
             except RangeError as e:
+                print(f'{e=}')
                 if e.last_distance is None:
                     raise e
                 t = e.incomplete_trajectory[-1]
@@ -676,9 +677,10 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
         def event_max_range(
             t: float, s: Any
         ) -> np.floating:  # Stop when x crosses maximum_range
-            return s[0] - (maximum_range + 1)  # +1 to ensure we cross the threshold
+            return s[0] - (maximum_range + 0.001)  # +1 to ensure we cross the threshold
 
         max_drop = max(_cMaximumDrop, _cMinimumAltitude - self.alt0)
+#        print(f'{max_drop=} {_cMaximumDrop=} {_cMinimumAltitude=} {self.alt0=}')
 
         @scipy_event(terminal=True, direction=-1)
         def event_max_drop(
@@ -703,10 +705,10 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             t: float, s: Any
         ) -> np.floating:  # Look for trajectory crossing sight line
             # Solve for y = x * tan(look_angle)
+            result = s[1] - s[0] * math.tan(self.look_angle_rad) if s[0] > 0 else 1.0
+#            print(f'event_second_zero_crossing {result=} {s[0]=} {s[1]=} {math.tan(self.look_angle_rad)=}')
             return (
-                s[1] - s[0] * math.tan(self.look_angle_rad)
-                if s[0] > 0 and s[1] > 0
-                else 1.0
+                result
             )
 
         def event_zero_crossing(
@@ -725,6 +727,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
                 event_second_zero_crossing
             )
             traj_events.append(zero_crossing)
+#            print(f'{filter_flags=} {stop_at_zero=} event_second_zero_crossing_added {len(traj_events)=}')
 
         sol = solve_ivp(
             diff_eq,
@@ -753,14 +756,17 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
         termination_reason = None
         if sol.status == 1:  # A termination event occurred
             if len(sol.t_events) > 0:
+#                print(f"{sol.t_events=}")
                 # if sol.t_events[0].size > 0:  # Expected termination event: we reached requested range
                 #     logger.debug(f"Integration stopped at max range: {sol.t_events[0][0]}")
                 if sol.t_events[1].size > 0:  # event_max_drop
                     y = sol.sol(sol.t_events[1][0])[1]  # Get y at max drop event
-                    if y < _cMaximumDrop:
+
+                    if y <= max_drop:
                         termination_reason = RangeError.MaximumDropReached
                     else:
                         termination_reason = RangeError.MinimumAltitudeReached
+#                    print(f'{y=} {max_drop=} {termination_reason=}')
                 elif sol.t_events[2].size > 0:  # event_min_velocity
                     termination_reason = RangeError.MinimumVelocityReached
                 elif len(traj_events) > 3 and sol.t_events[3].size > 0:  # zero_crossing
@@ -958,6 +964,7 @@ class SciPyIntegrationEngine(BaseIntegrationEngine[SciPyEngineConfigDict]):
             # endregion Find TrajectoryData points requested by filter_flags
         # endregion Find requested TrajectoryData points
 
+#        print(f'{termination_reason=}')
         if termination_reason not in (None, self.HitZero):
             assert termination_reason is not None  # for mypy
             raise RangeError(termination_reason, ranges)

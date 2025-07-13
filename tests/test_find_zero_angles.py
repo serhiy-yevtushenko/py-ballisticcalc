@@ -353,7 +353,7 @@ def test_7_62_point_mismatch(scipy_calc):
     check_shot_angle_equals(scipy_calc, create_7_62_mm_shot_neg_sight_height, point_x, point_y)
 
 
-def create_7_62_mm_shot_rostislav():
+def create_7_62_mm_shot_neg_sight_height_positive_altitude():
     diameter = Distance.Millimeter(7.62)
     length: Distance = Distance.Millimeter(32.5628)
     weight = Weight.Grain(180)
@@ -452,7 +452,7 @@ def find_min_dev_point(hit_result, point_x, point_y):
     return min_dev_point
 
 TESTED_SHOTS = [create_23_mm_shot, create_0_308_caliber_shot, create_7_62_mm_shot_neg_sight_height,
-                create_7_62_mm_shot_rostislav,
+                create_7_62_mm_shot_neg_sight_height_positive_altitude,
                 create_nato_7_62_mm, create_nato_5_56_mm_shot_pos_sight_height]
 #SMALL_TESTED_SHOTS = [create_23_mm_shot]
 TESTED_ANGLES = list(range(0, 91, 1))
@@ -530,7 +530,7 @@ def test_reachable_almost_max_height(shot_factory, scipy_calc):
 EXCEPTION_CASES = [
     ((7071.630552600922, 153.97926113995862), create_23_mm_shot),
     ((4691.07221312, 105.36063621068715), create_0_308_caliber_shot),
-    ((3749.876564130784, 0), create_7_62_mm_shot_neg_sight_height),
+    ((3749.876564130784, 0), create_7_62_mm_shot_neg_sight_height_positive_altitude),
     ((3574.6008249856727, 24.05582994099316), create_7_62_mm_shot_neg_sight_height),
     ((3600.140741624915, 14.463475504373086), create_7_62_mm_shot_neg_sight_height),
 ]
