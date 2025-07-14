@@ -20,8 +20,13 @@ from py_ballisticcalc import (
     Weapon,
     Wind,
     Shot,
+    TableG7,
+    TrajFlag,
 )
-from tests.fixtures_and_helpers import print_out_trajectory_compact
+from tests.fixtures_and_helpers import (
+    print_out_trajectory_compact,
+    print_out_trajectory_list_compact,
+)
 
 ANGLE_EPSILON_IN_DEGREES = 0.0009
 
@@ -503,6 +508,24 @@ def test_find_max_range_different_angles(shot_factory, look_angle_degrees, scipy
     #assert distance_min_point_max_range_point_meters<0.01
     assert distance_min_point_max_range_point_meters<0.1
 
+def test_danger_space_shot(scipy_calc):
+    shot = create_danger_space_shot_with_wind()
+    elevation = scipy_calc.set_weapon_zero(shot, Distance.Foot(300))
+    print(f'{elevation>>Angular.Degree}')
+    assert pytest.approx(elevation>>Angular.Degree, abs=0.001)==0.054
+
+
+def create_danger_space_shot_with_wind():
+    dm = DragModel(
+        0.223, TableG7, Weight.Grain(168), Distance.Inch(0.308), Distance.Inch(1.282)
+    )
+    ammo = Ammo(dm, Velocity.FPS(2750), Temperature.Celsius(15))
+    ammo.calc_powder_sens(Velocity.FPS(2723), Temperature.Celsius(0))
+    current_winds = [Wind(Velocity.FPS(2), Angular.Degree(90))]
+    shot = Shot(weapon=Weapon(sight_height=Distance.Inch(1)), ammo=ammo, winds=current_winds)
+    return shot
+
+
 @pytest.mark.parametrize("shot_factory", TESTED_SHOTS)
 def test_set_weapon_zero_max_range(shot_factory, scipy_calc):
     with PreferredUnitsContextManager():
@@ -514,6 +537,27 @@ def test_set_weapon_zero_max_range(shot_factory, scipy_calc):
 def test_find_almost_max_height(shot_factory, scipy_calc):
     check_almost_max_height(scipy_calc, shot_factory)
 
+def test_length_of_shot(scipy_calc):
+    with PreferredUnitsContextManager():
+        py_ballisticcalc.loadMetricUnits()
+
+        shot_factory = create_nato_5_56_mm_shot_pos_sight_height
+        tested_shot = shot_factory()
+        #tested_shot.zero_angle = Angular.Degree(89.99828858095566)
+        target_x_ft = 0.25000000000092704
+        target_y_ft = target_x_ft*math.tan(tested_shot.look_angle>>Angular.Radian)
+        print(f'{target_y_ft=} {Distance.Foot(target_y_ft)>>Distance.Meter=}')
+
+        distance = Distance.Meter(2551.0633494297517)
+        scipy_calc._init_zero_calculation(tested_shot, distance)
+        tested_shot.look_angle = Angular.Degree(89.99828858095566)
+        hit_result = scipy_calc._engine_instance._integrate(tested_shot, target_x_ft, target_x_ft, TrajFlag.NONE, stop_at_zero=True)
+        print(f"{len(hit_result)=}")
+        #hit_result = scipy_calc._engine_instance._integrate(
+        #    tested_shot, target_x_ft, target_x_ft, TrajFlag.NONE, stop_at_zero=True
+        #)
+        print_out_trajectory_list_compact(hit_result, len(hit_result), "hit_result")
+        assert len(hit_result)>0
 
 @pytest.mark.parametrize("shot_factory", TESTED_SHOTS)
 def test_handling_zero_point(shot_factory, scipy_calc):
