@@ -112,7 +112,6 @@ def find_max_height_robust(scipy_calc, shot_factory):
     apex_point = hit_result.flag(py_ballisticcalc.TrajFlag.APEX)
     return apex_point.height
 
-
 def get_calc_step(scipy_calc):
     calc_step = scipy_calc._engine_instance.get_calc_step()
     cals_step_meters = py_ballisticcalc.Distance.Foot(calc_step) >> py_ballisticcalc.Distance.Meter
@@ -120,17 +119,17 @@ def get_calc_step(scipy_calc):
     assert cals_step_meters == pytest.approx(0.07619999999999999, abs=0.01)
     return cals_step_meters
 
-
-def check_shot_out_of_range(scipy_calc, shot_factory, point_x, point_y):
-    look_angle_in_degrees = math.degrees(math.atan2(point_y, point_x))
+def check_shot_out_of_range(scipy_calc, shot_factory, point_x_in_meters: float, point_y_in_meters: float):
+    look_angle_in_degrees = math.degrees(math.atan2(point_y_in_meters, point_x_in_meters))
     shot = shot_factory()
     shot.look_angle = py_ballisticcalc.Angular.Degree(look_angle_in_degrees)
-    distance_in_meters = math.sqrt(point_x**2 + point_y**2)
+    distance_in_meters = math.sqrt(point_x_in_meters ** 2 + point_y_in_meters ** 2)
     # both find_zero_angle and zero_angle should throw OutOfRangeError
     with pytest.raises(py_ballisticcalc.OutOfRangeError):
-        scipy_calc._engine_instance.find_zero_angle(
+        angle = scipy_calc._engine_instance.find_zero_angle(
             shot, py_ballisticcalc.Distance.Meter(distance_in_meters)
         )
+        print(f'find_zero_angle return {angle>>Angular.Degree=} for {shot.look_angle>>Angular.Degree=} for {point_x_in_meters=} {point_y_in_meters=} when OutOfRangeError was expected')
     with pytest.raises(py_ballisticcalc.OutOfRangeError):
         scipy_calc._engine_instance.zero_angle(shot, py_ballisticcalc.Distance.Meter(distance_in_meters))
 
@@ -242,13 +241,14 @@ def compute_look_angle_and_distance_for_point(
 
 
 def check_almost_max_height(scipy_calc, shot_factory):
-    cals_step_meters = get_calc_step(scipy_calc)
+    calc_step_meters = get_calc_step(scipy_calc)
     max_height = find_max_height_robust(scipy_calc, shot_factory)
     max_height_in_meters = max_height >> py_ballisticcalc.Distance.Meter
-    point_x = cals_step_meters
+    print(f'\n\n {max_height_in_meters=} {calc_step_meters=}')
+    point_x = calc_step_meters
     point_y = max_height_in_meters
-    check_shot_out_of_range(scipy_calc, shot_factory, point_x, point_y)
-
+    #check_shot_out_of_range(scipy_calc, shot_factory, point_x, point_y)
+    check_shot_result_equivalent(scipy_calc, shot_factory, point_x, point_y)
 
 def check_reachable_almost_max_height(scipy_calc, shot_factory):
     cals_step_meters = get_calc_step(scipy_calc)
@@ -259,6 +259,7 @@ def check_reachable_almost_max_height(scipy_calc, shot_factory):
     for diff in diffs:
         point_x = cals_step_meters
         point_y = max_height_in_meters - diff
+        print(f'{diff=} {point_x=} {point_y=}')
         check_shot_result_equivalent(scipy_calc, shot_factory, point_x, point_y)
 
 
@@ -537,27 +538,33 @@ def test_set_weapon_zero_max_range(shot_factory, scipy_calc):
 def test_find_almost_max_height(shot_factory, scipy_calc):
     check_almost_max_height(scipy_calc, shot_factory)
 
+def test_reproduce_zero_len_trajectory(scipy_calc):
+    shot_factory = create_nato_5_56_mm_shot_pos_sight_height
+    cals_step_meters = get_calc_step(scipy_calc)
+    max_height = find_max_height_robust(scipy_calc, shot_factory)
+    max_height_in_meters = max_height >> py_ballisticcalc.Distance.Meter
+    point_x = cals_step_meters
+    point_y = max_height_in_meters
+    look_angle_in_degrees = math.degrees(math.atan2(point_y, point_x))
+    shot = shot_factory()
+    shot.look_angle = py_ballisticcalc.Angular.Degree(look_angle_in_degrees)
+    distance_in_meters = math.sqrt(point_x**2 + point_y**2)
+    print(f'\n{look_angle_in_degrees=} {distance_in_meters=}')
+    # both find_zero_angle and zero_angle should throw OutOfRangeError
+
+    scipy_calc._engine_instance.zero_angle(shot, py_ballisticcalc.Distance.Meter(distance_in_meters))
+
 def test_length_of_shot(scipy_calc):
-    with PreferredUnitsContextManager():
-        py_ballisticcalc.loadMetricUnits()
+    shot_factory = create_nato_5_56_mm_shot_pos_sight_height
+    tested_shot = shot_factory()
+    #tested_shot.zero_angle = Angular.Degree(89.99828858095566)
+    target_x_ft = 0.25000000000092704
+    tested_shot.look_angle = Angular.Radian(3.280154517872802)
+    print(f"{tested_shot.look_angle>>Angular.Degree=}")
+    tested_shot_props = scipy_calc._init_trajectory(tested_shot)
+    hit_result = scipy_calc._engine_instance._integrate(tested_shot_props, target_x_ft, target_x_ft, TrajFlag.NONE, stop_at_zero=True)
+    assert len(hit_result) > 0
 
-        shot_factory = create_nato_5_56_mm_shot_pos_sight_height
-        tested_shot = shot_factory()
-        #tested_shot.zero_angle = Angular.Degree(89.99828858095566)
-        target_x_ft = 0.25000000000092704
-        target_y_ft = target_x_ft*math.tan(tested_shot.look_angle>>Angular.Radian)
-        print(f'{target_y_ft=} {Distance.Foot(target_y_ft)>>Distance.Meter=}')
-
-        distance = Distance.Meter(2551.0633494297517)
-        scipy_calc._init_zero_calculation(tested_shot, distance)
-        tested_shot.look_angle = Angular.Degree(89.99828858095566)
-        hit_result = scipy_calc._engine_instance._integrate(tested_shot, target_x_ft, target_x_ft, TrajFlag.NONE, stop_at_zero=True)
-        print(f"{len(hit_result)=}")
-        #hit_result = scipy_calc._engine_instance._integrate(
-        #    tested_shot, target_x_ft, target_x_ft, TrajFlag.NONE, stop_at_zero=True
-        #)
-        print_out_trajectory_list_compact(hit_result, len(hit_result), "hit_result")
-        assert len(hit_result)>0
 
 @pytest.mark.parametrize("shot_factory", TESTED_SHOTS)
 def test_handling_zero_point(shot_factory, scipy_calc):
